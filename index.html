@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Baseline Beats the Model — Ranking Signal Analysis on FlyRank Production Search Data</title>
+<meta name="description" content="An honest audit of predicting search ranking position from production SEO signals: a rule-based baseline outperforms a Random Forest model across every validation design tested.">
+<style>
+  :root{
+    --bg: #16161a;
+    --bg-panel: #1d1d22;
+    --ink: #e8e6df;
+    --ink-dim: #b8b6ae;
+    --ink-faint: #82807a;
+    --rule: #34343a;
+    --accent: #e8734a;
+    --accent2: #4a90a4;
+    --good: #6fae7a;
+    --warn: #c9a227;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --mono: "SF Mono", "Menlo", "Consolas", monospace;
+    --maxw: 760px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family: var(--serif);
+    font-size:19px; line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{ background: var(--accent); color:#16161a; }
+
+  a{ color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:hover{ color: #f3936c; }
+
+  .wrap{ max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+  .wrap-wide{ max-width: 920px; margin: 0 auto; padding: 0 24px; }
+
+  header.hero{
+    padding: 96px 0 64px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .kicker{
+    font-family: var(--mono); font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 22px;
+  }
+  h1.title{
+    font-family: var(--serif); font-weight: 600; font-size: 44px; line-height: 1.18;
+    margin: 0 0 20px; color: #fff; letter-spacing: -0.01em;
+  }
+  .subtitle{
+    font-size: 20px; color: var(--ink-dim); font-style: italic; max-width: 640px;
+    margin: 0 0 34px;
+  }
+  .byline{
+    font-family: var(--sans); font-size: 14px; color: var(--ink-faint);
+    display:flex; flex-wrap:wrap; gap: 6px 18px; align-items:center;
+  }
+  .byline b{ color: var(--ink); font-weight: 600; }
+  .pill{
+    font-family: var(--mono); font-size: 11.5px; padding: 3px 9px; border: 1px solid var(--rule);
+    border-radius: 20px; color: var(--ink-dim);
+  }
+
+  nav.toc{
+    font-family: var(--sans); font-size: 13.5px; color: var(--ink-faint);
+    padding: 22px 0; border-bottom: 1px solid var(--rule);
+    position: sticky; top: 0; background: rgba(22,22,26,0.92); backdrop-filter: blur(6px);
+    z-index: 10; overflow-x:auto; white-space:nowrap;
+  }
+  nav.toc a{ color: var(--ink-dim); margin-right: 22px; text-decoration:none; }
+  nav.toc a:hover{ color: var(--accent); }
+
+  main{ padding: 8px 0 40px; }
+  section{ padding: 56px 0; border-bottom: 1px solid var(--rule); }
+  section:last-of-type{ border-bottom:none; }
+
+  h2{
+    font-family: var(--sans); font-weight: 700; font-size: 13px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--accent2); margin: 0 0 28px;
+    display:flex; align-items:center; gap:10px;
+  }
+  h2 .num{ color: var(--ink-faint); font-weight: 500; }
+  h3{
+    font-family: var(--sans); font-weight: 700; font-size: 16px; color: var(--ink);
+    margin: 30px 0 12px;
+  }
+  p{ margin: 0 0 18px; }
+  ul, ol{ margin: 0 0 18px; padding-left: 24px; }
+  li{ margin-bottom: 8px; }
+  strong{ color: #fff; font-weight: 600; }
+  code{
+    font-family: var(--mono); font-size: 0.86em; background: var(--bg-panel);
+    padding: 2px 6px; border-radius: 4px; border: 1px solid var(--rule); color: #f0c9a8;
+  }
+
+  .abstract{
+    background: var(--bg-panel); border: 1px solid var(--rule); border-radius: 10px;
+    padding: 30px 32px; margin-top: 8px; font-size: 17.5px;
+  }
+  .abstract .label{
+    font-family: var(--sans); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 14px; font-weight: 700;
+  }
+
+  figure{ margin: 30px 0; }
+  figure img{ width: 100%; display:block; border-radius: 8px; border: 1px solid var(--rule); background: var(--bg-panel); }
+  figcaption{
+    font-family: var(--sans); font-size: 13.5px; color: var(--ink-faint); margin-top: 10px; line-height:1.5;
+  }
+
+  .callout{
+    border-left: 3px solid var(--accent); background: var(--bg-panel);
+    padding: 16px 20px; border-radius: 0 6px 6px 0; margin: 24px 0; font-size: 17.5px;
+  }
+  .callout.good{ border-color: var(--good); }
+  .callout.warn{ border-color: var(--warn); }
+
+  table{
+    width: 100%; border-collapse: collapse; font-family: var(--sans); font-size: 14.5px;
+    margin: 22px 0; background: var(--bg-panel); border-radius: 8px; overflow:hidden;
+  }
+  th, td{ text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+  th{ color: var(--ink-faint); font-weight: 600; text-transform: uppercase; font-size: 11.5px; letter-spacing: 0.05em; }
+  td{ color: var(--ink-dim); }
+  tr:last-child td{ border-bottom:none; }
+  td.hl, th.hl{ color: var(--ink); }
+  .mono-num{ font-family: var(--mono); color: var(--ink); }
+
+  .grid2{ display:grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .card{
+    background: var(--bg-panel); border: 1px solid var(--rule); border-radius: 8px; padding: 20px 22px;
+  }
+  .card h4{ font-family: var(--sans); font-size: 14px; margin: 0 0 8px; color: var(--ink); }
+  .card p{ font-size: 15px; color: var(--ink-dim); margin: 0; }
+
+  .stat-row{ display:flex; gap: 18px; flex-wrap: wrap; margin: 26px 0; }
+  .stat{
+    flex: 1 1 150px; background: var(--bg-panel); border: 1px solid var(--rule); border-radius: 8px;
+    padding: 16px 18px;
+  }
+  .stat .n{ font-family: var(--mono); font-size: 26px; color: var(--accent2); display:block; }
+  .stat .d{ font-family: var(--sans); font-size: 12.5px; color: var(--ink-faint); margin-top: 4px; }
+
+  ol.playbook li{ margin-bottom: 14px; }
+  ol.rank-list{ counter-reset: rank; list-style: none; padding-left: 0; }
+  ol.rank-list li{
+    counter-increment: rank; position: relative; padding-left: 46px; margin-bottom: 16px;
+  }
+  ol.rank-list li::before{
+    content: counter(rank); position:absolute; left:0; top:-2px;
+    font-family: var(--mono); font-size: 14px; color: var(--bg);
+    background: var(--accent); width: 28px; height: 28px; border-radius: 50%;
+    display:flex; align-items:center; justify-content:center;
+  }
+
+  footer{
+    padding: 60px 0 90px; font-family: var(--sans); font-size: 14px; color: var(--ink-faint);
+  }
+  footer .credit{
+    border: 1px solid var(--rule); background: var(--bg-panel); border-radius: 10px;
+    padding: 24px 26px; margin-bottom: 30px;
+  }
+  footer .credit b{ color: var(--ink); }
+  footer a{ color: var(--accent2); }
+
+  @media (max-width: 640px){
+    body{ font-size: 17px; }
+    h1.title{ font-size: 32px; }
+    header.hero{ padding: 64px 0 44px; }
+    .grid2{ grid-template-columns: 1fr; }
+    section{ padding: 40px 0; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="kicker">FlyRank ML Internship — Capstone Research Paper</div>
+    <h1 class="title">Baseline Beats the Model</h1>
+    <p class="subtitle">An honest audit of predicting search-ranking position from production SEO signals — and why the rule-based baseline won every round.</p>
+    <div class="byline">
+      <span><b>Syed Saadullah</b></span>
+      <span class="pill">Lane 1 · Ranking Signal Analysis</span>
+      <span class="pill">Aug 2026</span>
+      <span class="pill">Decision-support research</span>
+    </div>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="wrap-wide">
+    <a href="#abstract">Abstract</a>
+    <a href="#intro">Introduction</a>
+    <a href="#data">Data</a>
+    <a href="#method">Methodology</a>
+    <a href="#results">Results</a>
+    <a href="#limits">Limitations</a>
+    <a href="#playbook">Recommendations</a>
+    <a href="#repro">Reproducibility</a>
+    <a href="#credit">Acknowledgments</a>
+  </div>
+</nav>
+
+<main class="wrap">
+
+  <section id="abstract">
+    <h2><span class="num">01</span> Abstract</h2>
+    <div class="abstract">
+      <div class="label">Question → Method → Result</div>
+      <p><strong>Question.</strong> Can observed search-performance signals — impressions, clicks, and content age — predict a page's average search-ranking position well enough that a learned model beats a simple rule-based priority score for deciding which content to review first?</p>
+      <p><strong>Method.</strong> I trained a Random Forest regressor and a hand-written baseline scoring rule on the same rows and the same held-out test split, drawn from FlyRank's production search-performance warehouse (the <code>fact_content_daily_performance</code> table, a January 2025 window), then re-ran the comparison under a time-aware split and a leakage audit to see whether the result held up.</p>
+      <p><strong>Result.</strong> The baseline won every time. Across the original random split, a time-aware split, and a version with a flagged-leaky feature removed, the Random Forest model's RMSE (23.3–26.1) never approached the baseline's RMSE (10.9) on the same test rows — the model was worse, not better, and removing the leaky feature made it worse still.</p>
+      <p><strong>Honest read.</strong> With roughly 284 usable rows and three engineered features, there wasn't enough leak-free signal for a learned model to outperform a well-tuned heuristic; this is reported as a finding, not hidden as a failure, and the baseline — not the model — is what I recommend for production use today.</p>
+      <p><strong>Contribution.</strong> Beyond the negative modeling result, this paper delivers a reproducible baseline-first evaluation pipeline, a documented leakage audit, and a ranked action playbook that content teams can use immediately, independent of which method eventually wins.</p>
+    </div>
+  </section>
+
+  <section id="intro">
+    <h2><span class="num">02</span> Introduction &amp; Problem Statement</h2>
+    <p>Content and SEO teams sit on far more pages than they can review by hand. FlyRank's production warehouse alone tracks over half a million content items across dozens of clients, with tens of millions of daily performance rows accumulating behind them. The practical question is not "what is the perfect ranking algorithm" — it's much narrower and much more useful: <strong>given the signals we already collect, which handful of pages should a content team look at this week?</strong></p>
+    <p>That is a decision-support problem, not a search-engine-algorithm problem. Nobody on this team can see or influence Google's actual ranking function. What we can do is observe outcomes — impressions, clicks, average position — and build something that turns those outcomes into a defensible, ranked queue.</p>
+    <p>The obvious next question, once you have a queue, is whether machine learning actually earns its place over a simple rule. That question — and the discipline of testing it honestly, including when the answer is "no" — is the spine of this paper. Every claim below uses careful language: <em>observed</em>, <em>measured</em>, <em>directional</em>, <em>decision-support</em>. Nothing here claims causation, and nothing here claims the model works when it didn't.</p>
+  </section>
+
+  <section id="data">
+    <h2><span class="num">03</span> Data</h2>
+    <p>This work draws on the <strong>FlyRank ML Internship dataset</strong>, specifically the <code>fact_content_daily_performance</code> table inside the <code>FlyRank/internship-warehouse</code> release. The full warehouse behind this table spans <strong>84 clients</strong>, <strong>519,606 pseudonymized content items</strong>, and roughly <strong>78.8 million daily fact rows</strong> — production-scale search-performance data, fully pseudonymized before it ever reached this analysis.</p>
+
+    <div class="stat-row">
+      <div class="stat"><span class="n">~78.8M</span><span class="d">daily fact rows in the full warehouse</span></div>
+      <div class="stat"><span class="n">84</span><span class="d">clients in the full warehouse</span></div>
+      <div class="stat"><span class="n">519,606</span><span class="d">pseudonymized content items tracked</span></div>
+      <div class="stat"><span class="n">1,000</span><span class="d">rows sampled for this study</span></div>
+    </div>
+
+    <h3>The window used for modeling</h3>
+    <p>For the modeling work in this paper (Sections 5–6), I streamed the first 1,000 rows falling inside <strong>January 27–30, 2025</strong> — a mid-panel window chosen deliberately because it sits well before the warehouse's sealed test month (June 2026), so nothing in this analysis could see or leak from held-out future data. That sample resolved to <strong>437 unique content items</strong> across <strong>2 clients with Google Search Console (GSC) access</strong>, one row per content item per day.</p>
+
+    <h3>What was excluded, and why</h3>
+    <ul>
+      <li><strong>Rows with a null <code>gsc_avg_position</code></strong> — there is nothing to predict if the label doesn't exist for that row.</li>
+      <li><strong>Rows with <code>gsc_impressions &lt; 10</code></strong> — excluded from model training and evaluation (though kept and separately labeled "No Action" in the action playbook) because a handful of impressions is too little signal to rank meaningfully. This dropped the modeling set from 1,000 rows to <strong>284 usable rows</strong>.</li>
+      <li><strong>The June 2026 window</strong> — sealed as held-out test data for the broader internship program; never touched in this paper.</li>
+      <li><strong>GA4 engagement columns</strong> — this paper focuses on GSC ranking signals only; GA4-derived features were out of scope here, not because they're uninteresting, but to keep the leakage audit tractable.</li>
+      <li><strong>Any client name, URL, or literal search query</strong> — every identifier used in this paper and its source notebooks is a pseudonymous hash (<code>content_hash_id</code>, <code>client_hash_id</code>). No raw query text or client-identifying detail appears anywhere in this write-up or its underlying notebooks.</li>
+    </ul>
+
+    <div class="callout">
+      This is a small, sparse slice of a much larger warehouse — 1,000 rows out of ~78.8 million, over a 4-day window, with GSC access limited to 2 of 84 clients in-sample. Every result below should be read as a finding <em>about this slice</em>, not a claim about the whole warehouse or about search ranking in general.
+    </div>
+  </section>
+
+  <section id="method">
+    <h2><span class="num">04</span> Methodology</h2>
+
+    <h3>Task framing</h3>
+    <p>The underlying decision — <em>which content items should a team review first</em> — was framed as a ranking/scoring task, with <code>gsc_avg_position</code> (a page's average search position; lower is better) as the regression target used to compare methods. The eventual output is a priority score per content item, not a classification of "good" or "bad" content.</p>
+
+    <h3>Baseline</h3>
+    <p>The baseline is a transparent, hand-written scoring rule, built before any model was trained:</p>
+    <ul>
+      <li><strong>Impressions volume</strong> contributes 0–40 points, scaled by impression count.</li>
+      <li><strong>Rank urgency</strong> contributes 0–40 points, higher when the average position is worse.</li>
+      <li><strong>Click-through penalty</strong> subtracts 20 points when a page has impressions but zero clicks.</li>
+      <li>Rows below 10 impressions are excluded and marked <code>insufficient_data</code> rather than scored.</li>
+    </ul>
+    <p>Each scored row also gets a <strong>reason code</strong> (e.g. <code>high_volume_low_rank_zero_ctr</code>) so a human reviewer can see exactly why a page was flagged — this interpretability is a deliberate design choice, not an afterthought.</p>
+
+    <h3>Model</h3>
+    <p>The learned model is a <strong>Random Forest Regressor</strong> (100 trees, max depth 10), chosen for its ability to capture non-linear interactions between signals, its built-in feature-importance output, and its robustness to the outliers common in web-traffic data. Three leak-checked features were engineered: <code>impressions_log</code> (log-transformed impressions), <code>ctr</code> (clicks / impressions), and <code>days_in_data</code> (content age within the sampled window).</p>
+
+    <h3>Validation design</h3>
+    <p>The model and baseline were evaluated on <strong>identical test rows</strong> in every comparison — never a model-favorable split. Three designs were run in sequence, each stricter than the last:</p>
+    <ol>
+      <li><strong>Original split:</strong> random 80/20 train/test split (n=227 train / 57 test).</li>
+      <li><strong>Time-aware split:</strong> trained on Jan 27–28, tested on Jan 29–30 — closer to how the model would actually be used (predict forward, not interpolate within the same days).</li>
+      <li><strong>Leakage-corrected:</strong> the <code>ctr</code> feature was flagged as a same-day leakage risk (see below) and removed, then the model was retrained and re-evaluated.</li>
+    </ol>
+
+    <h3>Leakage checks</h3>
+    <p>Two leakage checks were run deliberately, as a discipline rather than a formality:</p>
+    <div class="grid2">
+      <div class="card">
+        <h4>The label-leak trap</h4>
+        <p>A column literally derived from the label (<code>gsc_avg_position ≤ 10</code>) was intentionally added as a "feature," produced a trivial 100% accuracy, and was then deleted — a concrete demonstration of why <code>gsc_avg_position</code> itself must never appear on the feature side.</p>
+      </div>
+      <div class="card">
+        <h4>The same-day CTR leak</h4>
+        <p><code>ctr</code> is computed from the same day's clicks and impressions as the position being predicted. Because clicks likely influence rank (and vice versa), this creates circularity. It was flagged, removed, and the model was re-run without it (Section 5).</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="results">
+    <h2><span class="num">05</span> Results</h2>
+    <p>The headline result did not change across any of the three validation designs: <strong>the Random Forest model never beat the baseline.</strong></p>
+
+    <figure>
+      <img src="assets/model_vs_baseline.png" alt="Bar chart: Random Forest RMSE across three validation stages (23.3, 25.4, 26.1) compared to the baseline RMSE of 10.9, shown as a dashed reference line. The model is worse than the baseline in all three stages.">
+      <figcaption>Fig. 1 — RMSE on identical held-out test rows. Lower is better. The baseline's RMSE (10.9, dashed line) was computed once on the original split and used as the reference point throughout; the model's RMSE got worse, not better, as the validation design became stricter.</figcaption>
+    </figure>
+
+    <table>
+      <thead><tr><th>Validation stage</th><th class="hl">Model RMSE</th><th class="hl">Model MAE</th><th class="hl">Model R²</th><th>Baseline RMSE</th></tr></thead>
+      <tbody>
+        <tr><td>Original random 80/20 split</td><td class="mono-num">23.32</td><td class="mono-num">19.34</td><td class="mono-num">−0.198</td><td class="mono-num">10.91</td></tr>
+        <tr><td>Time-aware split (train J27–28 / test J29–30)</td><td class="mono-num">25.37</td><td class="mono-num">18.95</td><td class="mono-num">−0.171</td><td class="mono-num">—<sup>*</sup></td></tr>
+        <tr><td>Time-aware split, leaky CTR feature removed</td><td class="mono-num">26.07</td><td class="mono-num">21.50</td><td class="mono-num">−0.498</td><td class="mono-num">—<sup>*</sup></td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:14px;color:var(--ink-faint);margin-top:-10px;">* The baseline was scored once, on the original split, as the fixed reference point for every subsequent comparison — it does not change because it isn't retrained.</p>
+
+    <p>Negative R² at every stage means the model performed <em>worse than simply predicting the mean rank for every row</em> — a blunt but important honest signal. Removing the flagged-leaky <code>ctr</code> feature made RMSE slightly worse (25.37 → 26.07), which tells us that whatever information CTR was contributing, the two "safe" features left behind (<code>impressions_log</code>, <code>days_in_data</code>) weren't enough to replace it.</p>
+
+    <figure>
+      <img src="assets/feature_importance.png" alt="Horizontal bar chart of Random Forest feature importance: impressions_log 0.663, days_in_data 0.223, ctr 0.115.">
+      <figcaption>Fig. 2 — Feature importance from the original Random Forest fit. Impressions volume dominates; the same-day CTR feature — later flagged as a leakage risk — contributed the least.</figcaption>
+    </figure>
+
+    <div class="callout warn">
+      <strong>Error pattern.</strong> The model's largest errors clustered around content with either very high or very low actual rank but mid-range impressions — e.g. one row with an actual position of 1.7 was predicted at 55.7. With only three features and ~227 training rows, the model had too little to distinguish "genuinely well-ranked despite modest impressions" from "genuinely poorly-ranked despite modest impressions."
+    </div>
+
+    <h3>What the ranked queue produces</h3>
+    <p>Independent of the modeling result, the rule-based scoring system was applied to the full 1,000-row sample to produce a ranked action queue — this is what currently drives the recommendations in Section 7.</p>
+    <figure>
+      <img src="assets/action_distribution.png" alt="Bar chart of action distribution: No Action 857, Monitor 71, Optimize Content 72, out of 1,000 rows.">
+      <figcaption>Fig. 3 — Action distribution from the baseline scoring rule across all 1,000 sampled rows. The large "No Action" bucket is mostly the &lt;10-impression rows excluded from modeling but still tracked for completeness.</figcaption>
+    </figure>
+  </section>
+
+  <section id="limits">
+    <h2><span class="num">06</span> Limitations &amp; Honest Framing</h2>
+    <ul>
+      <li><strong>Small, sparse sample.</strong> 1,000 rows resolving to 284 usable rows and only 437 unique content items is not enough for a Random Forest to reliably beat a well-tuned heuristic — this paper treats that as the most likely explanation for the result, not a mystery.</li>
+      <li><strong>Narrow client coverage.</strong> Only 2 of 84 warehouse clients had GSC access in the sampled window; nothing here generalizes to clients without GSC data, and possibly not to clients outside these two.</li>
+      <li><strong>Short time window.</strong> Four calendar days (Jan 27–30, 2025) limits any feature that would benefit from a longer trailing history (e.g. a true 7-day or 30-day rolling average).</li>
+      <li><strong>Correlational, not causal.</strong> Nothing in this paper establishes that changing a signal (e.g. publishing more, changing content) causes a rank change. All relationships reported are observed associations in historical data.</li>
+      <li><strong>The model underperforms the baseline and should not be deployed as-is.</strong> This paper explicitly does not recommend replacing the rule-based score with the current Random Forest model. Future work should revisit this with more rows, a longer time window, and features engineered from a strictly prior period relative to the label.</li>
+      <li><strong>Reason codes are heuristic, not learned.</strong> The action playbook (Section 7) is built entirely on the rule-based baseline, precisely because it is the method that held up under testing.</li>
+    </ul>
+  </section>
+
+  <section id="playbook">
+    <h2><span class="num">07</span> Ranked Recommendations — Action Playbook</h2>
+    <p>These recommendations follow directly from the baseline scoring rule, since it is the method that actually held up under validation. They are written for content editors and SEO managers, and each carries an explicit confidence and reversal note.</p>
+
+    <ol class="rank-list">
+      <li><strong>Optimize first: high impressions + poor rank + zero clicks</strong> (reason code <code>high_volume_low_rank_zero_ctr</code> / <code>high_volume_low_rank</code>). These pages are visible in search but not converting that visibility into clicks — the highest-value review target. <em>What would make this wrong:</em> the page is intentionally broad/top-of-funnel content where low CTR is expected.</li>
+      <li><strong>Optimize second: poor rank + zero clicks, lower volume</strong> (reason code <code>low_rank_zero_ctr</code>). Same pattern as above at smaller scale — still worth a look, lower urgency.</li>
+      <li><strong>Monitor: single-signal flags</strong> (reason codes <code>high_volume</code>, <code>low_rank</code>, or <code>zero_ctr</code> alone). One concerning signal without corroboration from the others — track, don't act yet.</li>
+      <li><strong>Monitor: no clear signal</strong> (reason code <code>no_signal</code>). Keep in the weekly review rotation; no urgent action.</li>
+      <li><strong>No action: insufficient data</strong> (fewer than 10 impressions). Not enough signal to score reliably — revisit once volume grows.</li>
+    </ol>
+
+    <h3>Human review checklist (before acting on any flagged page)</h3>
+    <ul>
+      <li>Is the content thin, outdated, or duplicative of another page?</li>
+      <li>Does the content actually match the search intent it's ranking for?</li>
+      <li>How competitive is the topic — is a rank improvement realistic?</li>
+      <li>Does the page have adequate internal linking?</li>
+      <li>Is the page technically sound (load time, mobile rendering)?</li>
+    </ul>
+
+    <h3>What this playbook should never automate</h3>
+    <table>
+      <thead><tr><th>Item</th><th>Why not</th></tr></thead>
+      <tbody>
+        <tr><td>Content creation</td><td>Requires human creativity and editorial judgment</td></tr>
+        <tr><td>Link building</td><td>Relationship-driven, not a data-only decision</td></tr>
+        <tr><td>Penalty recovery</td><td>Needs investigation beyond available metrics</td></tr>
+        <tr><td>Brand strategy</td><td>Outside the scope of ranking signals</td></tr>
+        <tr><td>Causal claims of any kind</td><td>This data supports correlation, not causation</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Monitoring &amp; retrain triggers</h3>
+    <table>
+      <thead><tr><th>Trigger</th><th>Condition</th><th>Response</th></tr></thead>
+      <tbody>
+        <tr><td>Model degradation</td><td>RMSE &gt; 25 for 3 consecutive checks</td><td>Retrain / re-evaluate</td></tr>
+        <tr><td>Data shift</td><td>Impressions distribution shifts &gt; 20%</td><td>Re-evaluate features</td></tr>
+        <tr><td>New data available</td><td>A new month lands in the warehouse</td><td>Retrain with expanded data</td></tr>
+        <tr><td>Baseline drift</td><td>Baseline underperforms for 3 checks</td><td>Revise the rule</td></tr>
+      </tbody>
+    </table>
+    <p>Recommended cadence: <strong>monthly</strong> re-evaluation when new data lands, <strong>quarterly</strong> at minimum to catch seasonal shifts.</p>
+  </section>
+
+  <section id="repro">
+    <h2><span class="num">08</span> Reproducibility</h2>
+    <p>Every number in this paper traces back to a notebook in the source repository. Run them top to bottom to reproduce the results (a Hugging Face token with access to the internship warehouse dataset is required for the notebooks that pull fresh data).</p>
+    <ul>
+      <li><a href="https://github.com/SyedSaadullah999/FlyRankW1/blob/main/work/notebooks/w01_research_question.ipynb">w01 — Research question &amp; lane selection</a></li>
+      <li><a href="https://github.com/SyedSaadullah999/FlyRankW1/blob/main/work/notebooks/w02_ml_task_framing.ipynb">w02 — Framing the task as ML</a></li>
+      <li><a href="https://github.com/SyedSaadullah999/FlyRankW1/blob/main/work/notebooks/w03_data_contract.ipynb">w03 — Data contract, fields, and the leak trap</a></li>
+      <li><a href="https://github.com/SyedSaadullah999/FlyRankW1/blob/main/work/notebooks/w04_baseline_score.ipynb">w04 — Baseline scoring rule &amp; ranked queue</a></li>
+      <li><a href="https://github.com/SyedSaadullah999/FlyRankW1/blob/main/work/notebooks/w05_model.ipynb">w05 — Random Forest model vs. baseline</a></li>
+      <li><a href="https://github.com/SyedSaadullah999/FlyRankW1/blob/main/work/notebooks/w06_validation_audit.ipynb">w06 — Time-aware split &amp; leakage audit</a></li>
+      <li><a href="https://github.com/SyedSaadullah999/FlyRankW1/blob/main/work/notebooks/w07_action_playbook.ipynb">w07 — Action playbook &amp; paper exports</a></li>
+    </ul>
+    <p>Full repository: <a href="https://github.com/SyedSaadullah999/FlyRankW1">github.com/SyedSaadullah999/FlyRankW1</a></p>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="credit" id="credit">
+      Built on the <b>FlyRank ML Internship dataset</b> — data provided by
+      <a href="https://flyrank.ai" target="_blank" rel="noopener">FlyRank</a>.
+    </div>
+    <p>© 2026 Syed Saadullah. Research findings are observational and decision-support only; they do not constitute causal claims about search-ranking behavior.</p>
+  </div>
+</footer>
+
+</body>
+</html>
